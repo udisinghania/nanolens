@@ -20,8 +20,9 @@ handles = attach_nanolens(model, threshold=1e-4)
 # Run your standard distributed training loop...
 ```
 
-### Primary_Architecture_Draft: 
-61046D654DD61040C7142CA3D488B1C01A46C035DEB178F76C01B0211D978072
+### Checksums (SHA-256):
+* **Primary_Architecture_Draft_v1.0:** 61046D654DD61040C7142CA3D488B1C01A46C035DEB178F76C01B0211D978072
+* **Primary_Architecture_Draft_v1.1 (Notation Patch):** 5D7D3BEAACDB62F278E5517CBA6BB286C5A25FBC85373EF93FF0D459F4A1B74B
 
 ### License
 MIT License
