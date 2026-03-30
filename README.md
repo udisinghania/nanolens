@@ -8,12 +8,18 @@ When training continuous latent models (like JEPAs or VLAs), representations oft
 `nanoLens` tracks latent variance (`dim=-1`) across the residual stream in real-time. It catches the exact layer where the latent space calcifies, dumps a VRAM-safe telemetry snapshot, and kills the run before wasting compute budget.
 
 ### Installation & Usage
-Simply drop `nanolens.py` into your project utilities and attach it to your model before the training loop:
+## Installation & Usage
 
+Install directly via pip:
+```bash
+pip install git+[https://github.com/udisinghania/nanolens.git](https://github.com/udisinghania/nanolens.git)
+```
+Attach it to your model before the training loop:
 ```python
+import torch
 from nanolens import attach_nanolens
 
-# Attach to your Vision Transformer or LLM
+# Attach to your Vision Transformer or VLA
 # Automatically monitors linear layers for variance drops below 1e-4
 handles = attach_nanolens(model, threshold=1e-4)
 
