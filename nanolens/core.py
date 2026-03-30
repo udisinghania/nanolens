@@ -3,41 +3,46 @@ import logging
 
 logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
 
-def _collapse_hook(module, inp, out, name, threshold):
+def _collapse_hook(module, inp, out, name, threshold, collapsed_layers):
     """Monitors continuous latent variance for calcification and halts dead runs."""
-    try:
-        # Handle tuple outputs standard in HF / timm Vision Transformers
-        h = out[0] if isinstance(out, tuple) else out
+    if name in collapsed_layers:
+        return
+
+    # Handle tuple outputs standard in HF / timm Vision Transformers
+    h = out[0] if isinstance(out, tuple) else out
+    
+    if not isinstance(h, torch.Tensor):
+        return
+
+    # var(dim=0) captures whether different inputs in the batch map to the same representation
+    variance = h.float().var(dim=0).mean().item()
+    
+    if variance < threshold:
+        collapsed_layers.add(name)
+        logging.error(f"🚨 [nanoLens] Variance collapse at '{name}' (var={variance:.6e} < threshold={threshold:.6e})")
         
-        # Calculate feature variance across the embedding dimension
-        # .float() prevents float16 overflow artifacts during variance calc
-        variance = h.float().var(dim=-1).mean().item()
-        
-        if variance < threshold:
-            logging.error(f"🚨 [nanoLens] Alert: Variance collapse detected at {name} (var={variance:.6e})")
-            
-            # Trigger telemetry dump for debugging (requires torch.cuda.memory._record_memory_history)
+        # Trigger telemetry dump for debugging
+        if torch.cuda.is_available():
             try:
-                if torch.cuda.is_available():
-                    torch.cuda.memory._dump_snapshot(f"nanolens_collapse_{name.replace('.','_')}.pickle")
-                    logging.info("VRAM-safe telemetry snapshot saved.")
-            except Exception:
-                pass
+                # Must initialize memory history before dumping snapshot
+                torch.cuda.memory._record_memory_history(max_entries=100_000)
+                torch.cuda.memory._dump_snapshot(f"nanolens_collapse_{name.replace('.','_')}.pickle")
+                logging.info("[nanoLens] VRAM-safe telemetry snapshot saved.")
+            except Exception as e:
+                logging.warning(f"[nanoLens] Snapshot failed: {e}")
                 
-            raise RuntimeError(f"Representation collapse caught at {name}. Halting compute to save budget.")
-            
-    finally:
-        # Strict garbage collection to prevent DDP (Distributed Data Parallel) VRAM leaks
-        del out, inp
+        raise RuntimeError(f"[nanoLens] Representation collapse caught at '{name}'. Halting compute.")
 
 def attach_nanolens(model, target_layer=torch.nn.Linear, threshold=1e-4):
     """Attaches zero-overhead telemetry to the model's residual stream."""
     handles = []
+    collapsed_layers = set()  # Scoped per attach call, prevents global state pollution
+    
     for name, module in model.named_modules():
         if isinstance(module, target_layer):
-            # Capture the current name in the lambda closure
-            hook = lambda m, i, o, n=name: _collapse_hook(m, i, o, n, threshold)
+            # Capture the current name and the scoped set in the lambda closure
+            hook = lambda m, i, o, n=name: _collapse_hook(m, i, o, n, threshold, collapsed_layers)
             handles.append(module.register_forward_hook(hook))
             
-    logging.info(f"[nanoLens] Attached circuit breakers to {len(handles)} layers. Monitoring for calcification.")
+    logging.info(f"[nanoLens] Attached circuit breakers to {len(handles)} layers (threshold={threshold:.6e}).")
     return handles
