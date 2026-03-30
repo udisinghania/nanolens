@@ -30,6 +30,9 @@ In multi-GPU environments, if a representation collapse is detected asymmetrical
 
 *Roadmap:* Future updates will introduce a `should_stop` broadcast tensor to safely tear down the PyTorch process group without deadlocking the cluster.
 
+### ⚡ Profiling & Hardware Notes
+nanoLens tracks inter-sample spread (`var(dim=0)`) to accurately detect batch-wide representation collapse. While this causes noticeable memory-striding overhead on CPU evaluations, the latency is heavily amortized on A100/H100 architectures where standard matrix multiplications dominate the step time.
+
 ### Checksums (SHA-256):
 * **Primary_Architecture_Draft_v1.0:** 61046D654DD61040C7142CA3D488B1C01A46C035DEB178F76C01B0211D978072
 * **Primary_Architecture_Draft_v1.1 (Notation Patch):** 5D7D3BEAACDB62F278E5517CBA6BB286C5A25FBC85373EF93FF0D459F4A1B74B
