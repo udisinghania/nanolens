@@ -15,7 +15,8 @@ def _collapse_hook(module, inp, out, name, threshold, collapsed_layers):
         return
 
     # var(dim=0) captures whether different inputs in the batch map to the same representation
-    variance = h.float().var(dim=0).mean().item()
+    # correction=0 forces population variance to prevent silent NaN failures on batch_size=1
+    variance = h.float().var(dim=0, correction=0).mean().item()
     
     if variance < threshold:
         collapsed_layers.add(name)
