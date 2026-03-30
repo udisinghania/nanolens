@@ -8,7 +8,6 @@ When training continuous latent models (like JEPAs or VLAs), representations oft
 `nanoLens` tracks latent variance (`dim=-1`) across the residual stream in real-time. It catches the exact layer where the latent space calcifies, dumps a VRAM-safe telemetry snapshot, and kills the run before wasting compute budget.
 
 ### Installation & Usage
-## Installation & Usage
 
 Install directly via pip:
 ```bash
