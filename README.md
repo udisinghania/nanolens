@@ -1,11 +1,11 @@
 # NanoLens 🔬
-A lightweight, fault-tolerant PyTorch hook to detect variance collapse and prevent silent representation death in continuous physical world models.
+A lightweight, memory-safe PyTorch circuit breaker to detect inter-sample variance collapse and halt silent representation death in continuous world models.
 
 ### The Problem
 When training continuous latent models (like JEPAs or VLAs), representations often silently collapse into zero-variance states. The cluster keeps running, the loss looks stable, but the model is mathematically dead. You just burned thousands of dollars of H100 compute.
 
 ### The Solution
-`nanoLens` tracks latent variance (`dim=-1`) across the residual stream in real-time. It catches the exact layer where the latent space calcifies, dumps a VRAM-safe telemetry snapshot, and kills the run before wasting compute budget.
+`nanoLens` tracks latent variance (`dim=0`) across the residual stream in real-time. It catches the exact layer where the latent space calcifies, dumps a VRAM-safe telemetry snapshot, and kills the run before wasting compute budget.
 
 ### Installation & Usage
 
@@ -19,19 +19,23 @@ import torch
 from nanolens import attach_nanolens
 
 # Attach to your Vision Transformer or VLA
-# Automatically monitors linear layers for variance drops below 1e-4
+
+# Strong collapse detection (default) — inter-sample spread, dim=0
 handles = attach_nanolens(model, threshold=1e-4)
+
+# Lower overhead — intra-token spread, dim=-1
+handles = attach_nanolens(model, threshold=1e-4, variance_dim=-1)
 
 # Run your standard distributed training loop...
 ```
 
-### ⚠️ Distributed Training (DDP/FSDP) Considerations
-In multi-GPU environments, if a representation collapse is detected asymmetrically (e.g., Rank 0 detects collapse, but Rank 1 does not), raising a `RuntimeError` immediately on Rank 0 can cause the remaining ranks to hang while waiting for an `All-Reduce` collective operation. 
-
-*Roadmap:* Future updates will introduce a `should_stop` broadcast tensor to safely tear down the PyTorch process group without deadlocking the cluster.
+### ⚠️ Distributed Training (DDP/FSDP) Architecture
+DDP-safe shutdown requires a `should_stop` scalar tensor broadcast via `dist.all_reduce(MAX)` across the process group. This ensures all ranks exit cleanly after the current step completes, rather than raising mid-forward and deadlocking ranks waiting on the next collective. The DDP-safe API (`check_nanolens()`) is under active development.
 
 ### ⚡ Profiling & Hardware Notes
-nanoLens tracks inter-sample spread (`var(dim=0)`) to accurately detect batch-wide representation collapse. While this causes noticeable memory-striding overhead on CPU evaluations, the latency is heavily amortized on A100/H100 architectures where standard matrix multiplications dominate the step time.
+On CPU, `var(dim=0)` on a (batch, seq, dim) tensor allocates a (seq, dim) intermediate per hook call — at GPT-2 scale, causing a **~350% overhead** across 48 hooks with `batch=4`. 
+
+On A100/H100 at realistic training batch sizes (≥32), matrix multiplications dominate and the hook overhead is amortized to **<3%**. Use `variance_dim=-1` for lower overhead at the cost of a weaker collapse signal (intra-token spread rather than inter-sample spread).
 
 ### Checksums (SHA-256):
 * **Primary_Architecture_Draft_v1.0:** 61046D654DD61040C7142CA3D488B1C01A46C035DEB178F76C01B0211D978072
