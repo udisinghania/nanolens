@@ -1,8 +1,14 @@
 # NanoLens 🔬
-A lightweight, memory-safe PyTorch circuit breaker to detect inter-sample variance collapse and halt silent representation death in continuous world models.
+A lightweight PyTorch telemetry tool to track layer-wise variance, detect early representation collapse, and optionally halt silent representation death in continuous world models.
 
 ### The Problem
 When training continuous latent models (like JEPAs or VLAs), representations often silently collapse into zero-variance states. The cluster keeps running, the loss looks stable, but the model is mathematically dead. You just burned thousands of dollars of H100 compute.
+
+### The Evidence: Layer-wise Pathology
+Standard global loss metrics fail to capture the structural reality of representation death. 
+
+![Layer-wise Variance Collapse Propagation](collapse_heatmap.jpg)
+*NanoLens capturing variance collapse propagating through a JEPA. When variance regularization is removed (white dotted line), the global loss continues to drop smoothly, but internal telemetry reveals a structural decoupling: the encoder layers collapse to near-zero variance, while the predictor layers simultaneously spike as they thrash against a dead encoder.*
 
 ### The Solution
 `nanoLens` tracks latent variance (`dim=0`) across the residual stream in real-time. It catches the exact layer where the latent space calcifies, dumps a VRAM-safe telemetry snapshot, and coordinates a safe distributed cluster shutdown before wasting compute budget.
@@ -13,32 +19,32 @@ Install directly via pip:
 ```bash
 pip install git+[https://github.com/udisinghania/nanolens.git](https://github.com/udisinghania/nanolens.git)
 ```
-Attach it to your model before the training loop:
+Attach it to your model to begin layer-wise telemetry and DDP-safe anomaly detection:
 
 ```python
 import torch
-from nanolens import attach_nanolens, calibrate, check_nanolens
+from nanolens import attach_nanolens, check_nanolens
 
-# Step 1: Calibrate threshold from your model's actual variance distribution
-threshold, report = calibrate(model, sample_input)
-
-# Step 2: Attach to model (choose variance_dim based on your overhead tolerance)
+# Step 1: Attach to model (choose variance_dim based on your overhead tolerance)
+# threshold_box allows for dynamic/warmup calibration mid-training
+threshold_box = [0.0] 
 handles, should_stop = attach_nanolens(
     model, 
-    threshold=threshold, 
+    threshold_box=threshold_box, 
     variance_dim=0 # inter-sample spread — strong signal, higher CPU cost
-                   # use variance_dim=-1 for ~6x lower overhead
 )
 
-# Step 3: Distributed Training Loop
+# Step 2: Distributed Training Loop
 for step, batch in enumerate(dataloader):
-    check_nanolens(should_stop)  # DDP-safe — call every step, every rank
     
     loss = model(batch)
     loss.backward()
     optimizer.step()
+    
+    # DDP-safe circuit breaker — call after optimizer.step(), every rank
+    check_nanolens(should_stop) 
 
-# Step 4: Cleanup
+# Step 3: Cleanup
 for h in handles:
     h.remove()
 ```
@@ -50,10 +56,6 @@ DDP-safe shutdown requires a `should_stop` scalar tensor broadcast via `dist.all
 On CPU, `var(dim=0)` on a (batch, seq, dim) tensor allocates a (seq, dim) intermediate per hook call — at GPT-2 scale, causing a **~350% overhead** across 48 hooks with `batch=4`. 
 
 On A100/H100 GPUs at realistic training batch sizes (≥32), matrix multiplications dominate and the hook overhead is amortized to **<3%**. Use `variance_dim=-1` for lower overhead at the cost of a weaker collapse signal (intra-token spread rather than inter-sample spread).
-
-### Checksums (SHA-256):
-* **Primary_Architecture_Draft_v1.0:** 61046D654DD61040C7142CA3D488B1C01A46C035DEB178F76C01B0211D978072
-* **Primary_Architecture_Draft_v1.1 (Notation Patch):** 5D7D3BEAACDB62F278E5517CBA6BB286C5A25FBC85373EF93FF0D459F4A1B74B
 
 ### License
 MIT License
