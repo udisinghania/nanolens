@@ -7,7 +7,7 @@ When training continuous latent models (like JEPAs or VLAs), representations oft
 ### The Evidence: Layer-wise Pathology
 Standard global loss metrics fail to capture the structural reality of representation death. 
 
-![Layer-wise Variance Collapse Propagation](collapse_heatmap.jpg)
+![Layer-wise Variance Collapse Propagation](collapse_heatmap.png)
 *NanoLens capturing variance collapse propagating through a JEPA. When variance regularization is removed (white dotted line), the global loss continues to drop smoothly, but internal telemetry reveals a structural decoupling: the encoder layers collapse to near-zero variance, while the predictor layers simultaneously spike as they thrash against a dead encoder.*
 
 ### The Solution
